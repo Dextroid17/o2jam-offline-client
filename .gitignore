@@ -31,3 +31,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# ---- packaged installers: they ship as GitHub release assets, not in git ----
+dist/

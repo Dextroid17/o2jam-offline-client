@@ -198,8 +198,8 @@ Info 'submodules ready'
 Step '4/7  applying patches'
 
 function Apply-Patch([string]$repo, [string]$patch, [string]$label) {
-    if (-not (Test-Path $repo)) { Warn "  ?  $label: no source at $repo"; return $false }
-    if (-not (Test-Path $patch)) { Warn "  ?  $label: no patch $patch"; return $false }
+    if (-not (Test-Path $repo)) { Warn "  ?  ${label}: no source at $repo"; return $false }
+    if (-not (Test-Path $patch)) { Warn "  ?  ${label}: no patch $patch"; return $false }
     $name = Split-Path $patch -Leaf
     & git -C $repo apply --reverse --check $patch 2>$null
     if ($LASTEXITCODE -eq 0) { Info "  ok already applied  $name  ($label)"; return $true }

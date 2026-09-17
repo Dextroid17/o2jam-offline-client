@@ -84,6 +84,17 @@ py -3 installer\o2jam-installer.py       # Windows
 
 Install · Dry run · Stop, a live log pane, folder pickers — and every option the flags have. (`install.sh --gui` opens it after the CLI steps.)
 
+**Prefer a normal installer — no terminal, no Python, nothing to set up first?** Grab a packaged one and just double-click it:
+
+| Download | Platform | What it is |
+|---|---|---|
+| [**O2Jam-Installer.exe**](https://github.com/Dextroid17/o2jam-offline-client/releases/latest) | Windows x64 | one file, the whole installer inside (10 MB) |
+| [**O2Jam-Installer-x86_64.AppImage**](https://github.com/Dextroid17/o2jam-offline-client/releases/latest) | Linux x86_64 | double-click, no install step (14 MB) |
+| [**O2Jam-Installer**](https://github.com/Dextroid17/o2jam-offline-client/releases/latest) | Linux x86_64 | the same program as a plain binary, for scripts |
+| [**Install-O2Jam.cmd**](https://github.com/Dextroid17/o2jam-offline-client/releases/latest) | Windows | double-click .cmd that runs the PowerShell installer |
+
+They are the same window as above, frozen into a single file with the CLI installers *inside* it — `install.sh` / `install.ps1` are unpacked to a temp folder when it runs, so there is nothing else to download. Build your own with `bash packaging/build-linux.sh` or `packaging\build-windows.ps1` — see [`packaging/README.md`](packaging/README.md) for what is verified and what is not.
+
 <details>
 <summary>Or do it by hand, four commands 🛠️</summary>
 

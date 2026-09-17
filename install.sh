@@ -16,6 +16,10 @@
 #     5. links YOUR OWN O2Jam data into the build
 #     6. installs a menu entry + icon (+ Desktop icon)
 #
+#   Options:  --prefix DIR   --assets DIR   --jobs N   --src DIR
+#             --no-build     --no-shortcut  --no-venv  --skip-patches
+#             --gui          --yes
+#
 #   Nothing is downloaded except source code. No game data. No sudo. Ever.
 # ============================================================================
 set -uo pipefail
@@ -29,7 +33,7 @@ PREFIX="${O2JAM_HOME:-$HOME/o2jam}"
 ASSETS="" ; BRANCH="main" ; REPO="$REPO_DEFAULT" ; CXO2_URL="$CXO2_DEFAULT"
 CXO2_REF="$CXO2_REF_DEFAULT"
 JOBS="$(nproc 2>/dev/null || echo 4)"
-DO_BUILD=1 ; DO_SHORTCUT=1 ; DO_VENV=1 ; ASSUME_YES=0 ; GUI=0 ; SRC_DIR=""
+DO_BUILD=1 ; DO_SHORTCUT=1 ; DO_VENV=1 ; DO_PATCHES=1 ; ASSUME_YES=0 ; GUI=0 ; SRC_DIR=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -44,9 +48,10 @@ while [ $# -gt 0 ]; do
         --no-build)   DO_BUILD=0; shift ;;
         --no-shortcut) DO_SHORTCUT=0; shift ;;
         --no-venv)    DO_VENV=0; shift ;;
+        --skip-patches) DO_PATCHES=0; shift ;;
         --gui)        GUI=1; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
-        -h|--help)    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "install.sh: unknown option '$1'  (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -169,10 +174,14 @@ git -C "$CXO2" submodule update --init --recursive >/dev/null 2>&1 \
 
 # ------------------------------------------------------------ 4. patches ----
 step "4/6  applying patches"
-O2JAM_CXO2="$CXO2" bash "$PREFIX/native/apply-patches.sh" --cxo2 "$CXO2" \
-    --patches "$SRC/patches"
-PATCH_RC=$?
-[ "$PATCH_RC" = 0 ] || warn "some patches did not apply -- the build will probably fail, but let's try"
+if [ "$DO_PATCHES" = 1 ]; then
+    O2JAM_CXO2="$CXO2" bash "$PREFIX/native/apply-patches.sh" --cxo2 "$CXO2" \
+        --patches "$SRC/patches"
+    PATCH_RC=$?
+    [ "$PATCH_RC" = 0 ] || warn "some patches did not apply -- the build will probably fail, but let's try"
+else
+    dim "skipped (--skip-patches) -- the client will build unpatched"
+fi
 
 # --------------------------------------------------------------- 5. venv ---
 step "5/6  python venv for the window tooling"

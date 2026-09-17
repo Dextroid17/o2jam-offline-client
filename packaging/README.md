@@ -94,7 +94,21 @@ away. Full detail: [`../docs/SETUP.md`](../docs/SETUP.md).
   to build the `.exe` (Windows, or CI `windows-latest`). A Linux box *can* do it
   through Wine + Windows CPython if you want a build without leaving Linux — it
   is what produced the release exe, and its self-test passes under Wine — but
-  treat CI as the authority.
+  treat CI as the authority. That route is scripted as
+  `packaging/build-windows-wine.sh`; everything it downloads (Wine prefix,
+  Windows CPython 3.11, PyInstaller) stays in `~/.cache/o2jam-packaging` and can
+  be deleted at any time — a rebuild just re-downloads it.
+* **Verifying Windows scripts from Linux**: `check-powershell.ps1` runs under a
+  real PowerShell 7 (there is a
+  [portable Linux build](https://github.com/PowerShell/PowerShell/releases), no
+  sudo) and reports syntax errors, declared parameters, and whether `install.ps1`
+  still accepts every flag the GUI sends. It caught two bugs that would have
+  stopped the one-liner dead on Windows — one of them a `"$var: text"` string
+  that PowerShell reads as a drive reference:
+
+  ```bash
+  pwsh -NoProfile -Command "& packaging/check-powershell.ps1 -Files install.ps1,packaging/build-windows.ps1"
+  ```
 
 ---
 

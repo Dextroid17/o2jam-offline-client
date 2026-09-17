@@ -1,0 +1,33 @@
+# ---- game assets: never publish these (not ours to distribute) ----
+*.opa
+*.opi
+*.ojn
+*.ojm
+*.o2?
+*.dat
+Image/
+Music/
+assets/
+Avatar/
+Interface*/
+
+# ---- build output ----
+build/
+bin/
+*.o
+*.a
+*.so
+CMakeCache.txt
+CMakeFiles/
+
+# ---- logs & scratch ----
+*.log
+*.tmp
+*.bak
+*~
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/

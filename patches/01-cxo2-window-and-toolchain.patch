@@ -1,0 +1,615 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f714194..e55467b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -170,11 +170,18 @@ else()
+     target_compile_options(${TARGET} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-Wno-non-template-friend -Wno-virtual-move-assign>)
+ 
+     # Set dependencies libs
+-    target_link_libraries(${TARGET} PRIVATE stdc++fs)
++    # libstdc++fs was merged into libstdc++ in GCC 9+ and the stub archive is gone
++    # from modern toolchains (GCC 13+/16), so only link it for ancient compilers.
++    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 9)
++        target_link_libraries(${TARGET} PRIVATE stdc++fs)
++    endif()
+ 
+-    # iconv
+-    find_library(ICONV_LIB iconv REQUIRED)
+-    target_link_libraries(${TARGET} PRIVATE ${ICONV_LIB})
++    # iconv -- glibc has iconv built into libc and ships no libiconv (Arch/CachyOS),
++    # so do not use REQUIRED and only link a separate library when one exists.
++    find_library(ICONV_LIB iconv)
++    if(ICONV_LIB)
++        target_link_libraries(${TARGET} PRIVATE ${ICONV_LIB})
++    endif()
+ 
+     # Freetype
+     find_package(Freetype REQUIRED)
+diff --git a/src/CXO2/Contexts/CommandLineContext.cpp b/src/CXO2/Contexts/CommandLineContext.cpp
+index b8363f3..90040a0 100644
+--- a/src/CXO2/Contexts/CommandLineContext.cpp
++++ b/src/CXO2/Contexts/CommandLineContext.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include <array>
+ #include <regex>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/Contexts/RoomContext.cpp b/src/CXO2/Contexts/RoomContext.cpp
+index 44f2997..81c697f 100644
+--- a/src/CXO2/Contexts/RoomContext.cpp
++++ b/src/CXO2/Contexts/RoomContext.cpp
+@@ -10,6 +10,7 @@
+ #include <CXO2/Constants/Identifiers/Cache.hpp>
+ 
+ #include <Genode/IO/FileSystem.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/Core/Chart.cpp b/src/CXO2/Core/Chart.cpp
+index eb42536..9b5882d 100644
+--- a/src/CXO2/Core/Chart.cpp
++++ b/src/CXO2/Core/Chart.cpp
+@@ -2,6 +2,7 @@
+ #include <Genode/System/Exception.hpp>
+ 
+ #include <vector>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/Core/ChartRenderer.cpp b/src/CXO2/Core/ChartRenderer.cpp
+index 139e82b..142e457 100644
+--- a/src/CXO2/Core/ChartRenderer.cpp
++++ b/src/CXO2/Core/ChartRenderer.cpp
+@@ -11,6 +11,7 @@
+ #include <Genode/Tween/Fade.hpp>
+ #include <CXO2/UI/List.hpp>
+ #include <Genode/Utilities/Randomizer.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/IO/Loaders/Adaptor/BoundLoader.cpp b/src/CXO2/IO/Loaders/Adaptor/BoundLoader.cpp
+index 297d95b..c24ef77 100644
+--- a/src/CXO2/IO/Loaders/Adaptor/BoundLoader.cpp
++++ b/src/CXO2/IO/Loaders/Adaptor/BoundLoader.cpp
+@@ -3,6 +3,8 @@
+ 
+ #include <SFML/System/MemoryInputStream.hpp>
+ 
++#include <iostream>
++
+ namespace Cx
+ {
+     Gx::ResourcePtr<std::vector<ControlList::Bound>> BoundLoader::LoadFromFile(const std::filesystem::path& fileName, const Gx::ResourceContext& ctx) const
+@@ -29,17 +31,31 @@ namespace Cx
+ 
+         std::uint32_t signature;
+         if (stream.read(&signature, sizeof(signature)) != sizeof(signature))
+-            throw Gx::ResourceLoadException(ctx.GetID(), "Failed to load bound file");
++        {
++            // Some distributions ship a ControlList referencing bound files that are absent
++            // from the archive (the e-Games PH archive references Dialog_Exit.bnd,
++            // Dialog_GiftView.bnd and Dialog_UserInfo.bnd, none of which exist in
++            // Interface1.opi). A missing bound file must not abort the client.
++            std::cerr << "[BoundLoader] '" << ctx.GetID() << "': no bound data (missing or truncated) - continuing without bounds" << std::endl;
++            return std::make_unique<std::vector<ControlList::Bound>>();
++        }
+ 
+         std::uint16_t count;
+         if (stream.read(&count, sizeof(count)) != sizeof(count))
+-            throw Gx::ResourceLoadException(ctx.GetID(), "Failed to load bound file");
++        {
++            std::cerr << "[BoundLoader] '" << ctx.GetID() << "': truncated count - continuing without bounds" << std::endl;
++            return std::make_unique<std::vector<ControlList::Bound>>();
++        }
+ 
+         for (std::size_t i = 0; i < count; i++)
+         {
+             auto bound = ControlList::Bound();
+             if (stream.read(&bound, sizeof(bound)) != sizeof(bound))
+-                throw Gx::ResourceLoadException(ctx.GetID(), "Failed to load bound file");
++            {
++                std::cerr << "[BoundLoader] '" << ctx.GetID() << "': truncated at bound " << i << "/" << count
++                          << " - keeping " << bounds.size() << " bound(s)" << std::endl;
++                break;
++            }
+ 
+             bounds.push_back(bound);
+         }
+diff --git a/src/CXO2/IO/Loaders/Adaptor/O2JamSpriteLoader.cpp b/src/CXO2/IO/Loaders/Adaptor/O2JamSpriteLoader.cpp
+index 478e460..a06e272 100644
+--- a/src/CXO2/IO/Loaders/Adaptor/O2JamSpriteLoader.cpp
++++ b/src/CXO2/IO/Loaders/Adaptor/O2JamSpriteLoader.cpp
+@@ -6,6 +6,7 @@
+ #include <fmt/format.h>
+ #include <Genode/IO/Loaders/TextureLoader.hpp>
+ #include <CXO2/IO/TextureCompiler.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/IO/Loaders/Avatar/ItemDataLoader.cpp b/src/CXO2/IO/Loaders/Avatar/ItemDataLoader.cpp
+index ef6162e..df38eaa 100644
+--- a/src/CXO2/IO/Loaders/Avatar/ItemDataLoader.cpp
++++ b/src/CXO2/IO/Loaders/Avatar/ItemDataLoader.cpp
+@@ -8,6 +8,8 @@
+ 
+ #include <magic_enum/magic_enum.hpp>
+ #include <mutex>
++#include <iostream>
++#include <cstdint>
+ 
+ namespace Cx
+ {
+@@ -66,6 +68,93 @@ namespace Cx
+ 
+             return json;
+         }
++
++        // v3.10 stores Quantity as a single byte while v3.82 stores it as a 16-bit value;
++        // the two layouts are identical otherwise. Parsing with the wrong width desynchronises
++        // every following field, so the caller probes both and keeps whichever fits.
++        template<typename TQuantity>
++        void ParseItems(sf::InputStream& stream, const Gx::ResourceContext& ctx, const std::uint32_t count, ItemData& itemData)
++        {
++                #pragma pack(push, 1)
++                struct ItemInfo
++                {
++                    std::uint32_t ID;
++                    EquipmentType Type;
++                    Cx::Planet    Planet;
++                    std::uint16_t Flag;
++                    TQuantity     Quantity;
++                    std::uint8_t  MoidifierEffect;
++                    std::uint8_t  MoidifierCategory;
++                    Cx::Currency  Currency;
++                    std::uint32_t PriceGem;
++                    std::uint32_t PriceCash;
++                };
++                #pragma pack(pop)
++
++                for (std::size_t i = 0; i < count; i++)
++                {
++                    ItemInfo info;
++                    Read(stream, ctx, info);
++
++                    std::uint8_t slot;
++                    Read(stream, ctx, slot);
++
++                    auto item = ItemMetadata();
++                    item.ID            = info.ID;
++                    item.EquipmentType = info.Type;
++                    item.Origin        = info.Planet;
++                    item.IsNew         = info.Flag >> 11 & 1;
++
++                    switch (info.Flag >> 7 & 15)
++                    {
++                        case 0:  item.Gender = Gender::Female; break;
++                        case 1:  item.Gender = Gender::Male;   break;
++                        default: item.Gender = Gender::Any;    break;
++                    }
++
++                    item.Name        = ReadString(stream, ctx);
++                    item.Description = ReadString(stream, ctx);
++
++                    item.Prices = {};
++                    if (info.Currency != Currency::None)
++                        item.Prices[info.Currency] = info.Currency == Currency::Cash ? info.PriceCash : info.PriceGem;
++
++                    for (const auto [renderPart, _] : magic_enum::enum_entries<RenderPart>())
++                    {
++                        if (renderPart == RenderPart::SmallThumbnail || renderPart == RenderPart::LargeThumbnail)
++                        {
++                            if (renderPart == RenderPart::SmallThumbnail)
++                                item.SmallThumbnail = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Sprite>(false));
++                            else
++                                item.LargeThumbnail = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Sprite>(false));
++
++                            continue;
++                        }
++
++                        for (const auto [instrument, _] : magic_enum::enum_entries<Instrument>())
++                        {
++                            for (const auto gender : { Gender::Male, Gender::Female })
++                            {
++                                auto ref = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Animation>(false));
++                                if (ref.empty())
++                                    continue;
++
++                                item.References.push_back({
++                                    gender,
++                                    renderPart,
++                                    instrument,
++                                    ref
++                                });
++                            }
++                        }
++                    }
++
++                    if (item.ID == 0)
++                        continue;
++
++                    itemData.Items[item.ID] = item;
++                }
++        }
+     }
+ 
+     Gx::ResourcePtr<ItemData> ItemDataLoader::LoadFromFile(const std::filesystem::path& fileName, const Gx::ResourceContext& ctx) const
+@@ -79,92 +168,40 @@ namespace Cx
+ 
+         auto& stream = *inputStream.get();
+ 
+-        auto itemData = Instantiate(ctx);
+         std::uint32_t count;
+         Read(stream, ctx, count);
++        const auto itemsStart = stream.tell().value_or(0);
+ 
+-        #pragma pack(push, 1)
+-        struct ItemInfo
++        for (const bool wideQuantity : { true, false })
+         {
+-            std::uint32_t ID;
+-            EquipmentType Type;
+-            Cx::Planet    Planet;
+-            std::uint16_t Flag;
+-            std::uint8_t  Quantity; // newer version: std::uint16_t
+-            std::uint8_t  MoidifierEffect;
+-            std::uint8_t  MoidifierCategory;
+-            Cx::Currency  Currency;
+-            std::uint32_t PriceGem;
+-            std::uint32_t PriceCash;
+-        };
+-        #pragma pack(pop)
+-
+-        for (std::size_t i = 0; i < count; i++)
+-        {
+-            ItemInfo info;
+-            Read(stream, ctx, info);
+-
+-            std::uint8_t slot;
+-            Read(stream, ctx, slot);
+-
+-            auto item = ItemMetadata();
+-            item.ID            = info.ID;
+-            item.EquipmentType = info.Type;
+-            item.Origin        = info.Planet;
+-            item.IsNew         = info.Flag >> 11 & 1;
+-
+-            switch (info.Flag >> 7 & 15)
++            try
+             {
+-                case 0:  item.Gender = Gender::Female; break;
+-                case 1:  item.Gender = Gender::Male;   break;
+-                default: item.Gender = Gender::Any;    break;
++                auto itemData = Instantiate(ctx);
++                if (wideQuantity)
++                    ParseItems<std::uint16_t>(stream, ctx, count, *itemData);
++                else
++                    ParseItems<std::uint8_t>(stream, ctx, count, *itemData);
++
++                const auto end = stream.tell().value_or(0);
++                if (wideQuantity && end != stream.getSize().value_or(end))
++                    throw Gx::ResourceLoadException(ctx.GetID(), "ItemData entry did not consume the whole file");
++
++                itemData->Version = O2::Version;
++                return itemData;
+             }
+-
+-            item.Name        = ReadString(stream, ctx);
+-            item.Description = ReadString(stream, ctx);
+-
+-            item.Prices = {};
+-            if (info.Currency != Currency::None)
+-                item.Prices[info.Currency] = info.Currency == Currency::Cash ? info.PriceCash : info.PriceGem;
+-
+-            for (const auto [renderPart, _] : magic_enum::enum_entries<RenderPart>())
++            catch (const Gx::ResourceLoadException& ex)
+             {
+-                if (renderPart == RenderPart::SmallThumbnail || renderPart == RenderPart::LargeThumbnail)
+-                {
+-                    if (renderPart == RenderPart::SmallThumbnail)
+-                        item.SmallThumbnail = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Sprite>(false));
+-                    else
+-                        item.LargeThumbnail = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Sprite>(false));
+-
+-                    continue;
+-                }
++                std::cerr << "[ItemDataLoader] " << (wideQuantity ? "v3.82" : "v3.10")
++                          << " layout rejected for '" << ctx.GetID() << "': " << ex.what() << std::endl;
++                if (!wideQuantity)
++                    throw;
+ 
+-                for (const auto [instrument, _] : magic_enum::enum_entries<Instrument>())
+-                {
+-                    for (const auto gender : { Gender::Male, Gender::Female })
+-                    {
+-                        auto ref = CreateRef(stream, ctx, Gx::StringHelper::GetTypeName<Gx::Animation>(false));
+-                        if (ref.empty())
+-                            continue;
+-
+-                        item.References.push_back({
+-                            gender,
+-                            renderPart,
+-                            instrument,
+-                            ref
+-                        });
+-                    }
+-                }
++                auto _ = stream.seek(itemsStart);
+             }
+-
+-            if (item.ID == 0)
+-                continue;
+-
+-            itemData->Items[item.ID] = item;
+         }
+ 
+-        itemData->Version = O2::Version;
+-        return itemData;
++        return nullptr;
++
+     }
+ 
+     Gx::ResourcePtr<ItemData> ItemDataLoader::LoadFromJson(const Gx::Json& json, const Gx::ResourceContext& context) const
+diff --git a/src/CXO2/IO/TextureCacheBuilder.cpp b/src/CXO2/IO/TextureCacheBuilder.cpp
+index 4dd2109..f356cd2 100644
+--- a/src/CXO2/IO/TextureCacheBuilder.cpp
++++ b/src/CXO2/IO/TextureCacheBuilder.cpp
+@@ -10,6 +10,9 @@
+ 
+ #include <fmt/format.h>
+ #include <future>
++#include <iostream>
++#include <string>
++#include <vector>
+ 
+ namespace Cx
+ {
+@@ -75,6 +78,7 @@ namespace Cx
+     void TextureCacheBuilder::BuildTextures() const
+     {
+         auto tasks = std::vector<std::future<std::pair<std::string, Gx::ResourcePtr<SpriteSheet>>>>();
++        auto names = std::vector<std::string>();
+         for (const auto& item : m_archive.GetFileEntries())
+         {
+             bool supported = false;
+@@ -91,6 +95,7 @@ namespace Cx
+                 continue;
+ 
+             const auto& fileName = item->GetName();
++            names.push_back(fileName);
+             tasks.push_back(std::async(std::launch::async, [&, fileName]
+             {
+                 const auto loader = O2JamSpriteLoader();
+@@ -98,12 +103,28 @@ namespace Cx
+             }));
+         }
+ 
+-        for (auto& task : tasks)
++        for (std::size_t index = 0; index < tasks.size(); ++index)
+         {
+-            auto result = std::move(task.get());
+-            result.second->GetTexture();
++            try
++            {
++                auto result = std::move(tasks[index].get());
++                if (!result.second)
++                {
++                    std::cerr << "[TextureCacheBuilder] skipped '" << names[index] << "': no frames" << std::endl;
++                    continue;
++                }
+ 
+-            m_resources.Store(result.first, std::move(result.second));
++                result.second->GetTexture();
++                m_resources.Store(result.first, std::move(result.second));
++            }
++            catch (const std::exception& ex)
++            {
++                // Some distributions (notably e-Games) ship archive entries carrying a sprite
++                // extension that are not sprites at all - e.g. 'abusedata.ojs' holds a plain
++                // chat-filter word list, and some 'ATI_*.ojs' entries are raw JPEG images.
++                // Skip such an entry instead of aborting the entire client.
++                std::cerr << "[TextureCacheBuilder] skipped '" << names[index] << "': " << ex.what() << std::endl;
++            }
+         }
+     }
+ 
+diff --git a/src/CXO2/O2.cpp b/src/CXO2/O2.cpp
+index 12835da..d3cd32b 100644
+--- a/src/CXO2/O2.cpp
++++ b/src/CXO2/O2.cpp
+@@ -2,6 +2,9 @@
+ 
+ #include <Genode.hpp>
+ 
++#include <cstdlib>
++#include <cstring>
++
+ #include <CXO2/Archives/OpiArchive.hpp>
+ #include <CXO2/Archives/OjmArchive.hpp>
+ #include <CXO2/Archives/EmbeddedArchive.hpp>
+@@ -155,12 +158,47 @@ namespace Cx
+         return true;
+     }
+ 
++    namespace
++    {
++        // O2JAM_BORDERLESS=1: ordinary decoration-free window the user moves and
++        // stretches, instead of the forced-fullscreen desktop mode.
++        bool IsBorderlessWindow()
++        {
++            return std::getenv("O2JAM_BORDERLESS") != nullptr;
++        }
++
++        // O2JAM_FIT=letterbox keeps the aspect-true 800x600 letterbox (black side bars);
++        // otherwise the design view fills the window completely.
++        bool WantsLetterbox()
++        {
++            const char* fit = std::getenv("O2JAM_FIT");
++
++            return fit != nullptr && std::strcmp(fit, "letterbox") == 0;
++        }
++    }
++
+     void O2::Boot()
+     {
+         // Render Settings
+         auto& window = GetMainWindow();
+-        if (GetWindowState() == sf::State::Fullscreen)
++        // No black bars: in borderless-windowed mode the 800x600 design view is stretched
++        // over the whole window (full viewport) instead of letterboxed into 75% of its
++        // width. O2JAM_FIT=letterbox restores the aspect-true bars; Alt+Up toggles live.
++        if (IsBorderlessWindow())
++        {
++            auto view = window.getView();
++
++            if (WantsLetterbox())
++                view = GetLetterBoxView(view, window.getSize());
++            else
++                view.setViewport(sf::FloatRect({0.f, 0.f}, {1.f, 1.f}));
++
++            Gx::Application::SetView(view);
++        }
++        else if (GetWindowState() == sf::State::Fullscreen)
++        {
+             Gx::Application::SetView(GetLetterBoxView(window.getView(), window.getSize()));
++        }
+ 
+         // Initialize singleton providers
+         auto& context = GetModule<Gx::Context>();
+@@ -689,7 +727,11 @@ namespace Cx
+         if (Gx::Debugger::IsDebuggerAttached())
+             GetMainWindow().setTitle(fmt::format("{} [FPS: {}]", GetTitle(), GetRenderFrequency()));
+ 
+-        if ((isKeyPressed(sf::Keyboard::Key::LAlt) || isKeyPressed(sf::Keyboard::Key::RAlt)) && isKeyPressed(sf::Keyboard::Key::Enter) && !m_windowStateSwitched)
++        // In borderless-windowed mode Alt+Enter is deliberately a NO-OP: the SFML fullscreen
++        // path fires the X11 mode-setter and KWin can drop the window on the other monitor.
++        // Size the window with its corners/edges instead; true fullscreen is the separate
++        // run-desktop.sh mode.
++        if (!IsBorderlessWindow() && (isKeyPressed(sf::Keyboard::Key::LAlt) || isKeyPressed(sf::Keyboard::Key::RAlt)) && isKeyPressed(sf::Keyboard::Key::Enter) && !m_windowStateSwitched)
+         {
+             m_windowStateSwitched = true;
+             SetWindowState(GetWindowState() == sf::State::Fullscreen ? sf::State::Windowed : sf::State::Fullscreen);
+@@ -702,7 +744,7 @@ namespace Cx
+         if ((isKeyPressed(sf::Keyboard::Key::LAlt) || isKeyPressed(sf::Keyboard::Key::RAlt)) && isKeyPressed(sf::Keyboard::Key::Up) && !m_letterboxSwitched)
+         {
+             m_letterboxSwitched = true;
+-            if (GetWindowState() == sf::State::Fullscreen)
++            if (GetWindowState() == sf::State::Fullscreen || IsBorderlessWindow())
+             {
+                 if (Gx::Application::GetView().getViewport() ==  sf::FloatRect({0.f, 0.f}, {1.f, 1.f}))
+                     Gx::Application::SetView(GetLetterBoxView(Gx::Application::GetView(), GetMainWindow().getSize()));
+diff --git a/src/CXO2/Services/Online/AuthOnlineService.cpp b/src/CXO2/Services/Online/AuthOnlineService.cpp
+index 4547ec5..417f5fc 100644
+--- a/src/CXO2/Services/Online/AuthOnlineService.cpp
++++ b/src/CXO2/Services/Online/AuthOnlineService.cpp
+@@ -7,6 +7,7 @@
+ #include <CXO2/Network/Requests/AuthRequest.hpp>
+ #include <CXO2/Network/Responses/AuthResponse.hpp>
+ #include <CXO2/Services/NetworkService.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/States/StateItemShop.cpp b/src/CXO2/States/StateItemShop.cpp
+index 051fdbc..c565ac8 100644
+--- a/src/CXO2/States/StateItemShop.cpp
++++ b/src/CXO2/States/StateItemShop.cpp
+@@ -33,6 +33,7 @@
+ 
+ #include <magic_enum/magic_enum.hpp>
+ #include <fmt/format.h>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/States/StateMyRoom.cpp b/src/CXO2/States/StateMyRoom.cpp
+index 93b2934..f2125cf 100644
+--- a/src/CXO2/States/StateMyRoom.cpp
++++ b/src/CXO2/States/StateMyRoom.cpp
+@@ -32,6 +32,7 @@
+ 
+ #include <magic_enum/magic_enum.hpp>
+ #include <fmt/format.h>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/States/StatePayment.cpp b/src/CXO2/States/StatePayment.cpp
+index 221ab6d..a0c82cf 100644
+--- a/src/CXO2/States/StatePayment.cpp
++++ b/src/CXO2/States/StatePayment.cpp
+@@ -10,6 +10,7 @@
+ #include <CXO2/UI/BitmapNumber.hpp>
+ 
+ #include <SFML/Audio/Music.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/States/StateRoom.cpp b/src/CXO2/States/StateRoom.cpp
+index 9d1bcad..c131a64 100644
+--- a/src/CXO2/States/StateRoom.cpp
++++ b/src/CXO2/States/StateRoom.cpp
+@@ -61,6 +61,7 @@
+ #include <CXO2/UI/BitmapNumber.hpp>
+ #include <CXO2/UI/Button.hpp>
+ #include <CXO2/UI/ToolTip.hpp>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/UI/Components/Dialogs/SelectMusicDialog.cpp b/src/CXO2/UI/Components/Dialogs/SelectMusicDialog.cpp
+index 7470d91..e3c1048 100644
+--- a/src/CXO2/UI/Components/Dialogs/SelectMusicDialog.cpp
++++ b/src/CXO2/UI/Components/Dialogs/SelectMusicDialog.cpp
+@@ -32,6 +32,7 @@
+ #include <iterator>
+ #include <limits>
+ #include <unordered_set>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/CXO2/UI/Components/Room/RoomButton.cpp b/src/CXO2/UI/Components/Room/RoomButton.cpp
+index 1c0a73a..ca739bb 100644
+--- a/src/CXO2/UI/Components/Room/RoomButton.cpp
++++ b/src/CXO2/UI/Components/Room/RoomButton.cpp
+@@ -14,6 +14,7 @@
+ #include <CXO2/UI/Label.hpp>
+ 
+ #include <fmt/format.h>
++#include <algorithm>
+ 
+ namespace Cx
+ {
+diff --git a/src/main.cpp b/src/main.cpp
+index 77526a5..e4570b3 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -16,6 +16,7 @@
+ #include <exception>
+ #include <typeinfo>
+ #include <stdexcept>
++#include <cstdlib>
+ 
+ int main(int argc , char** argv)
+ {
+@@ -83,7 +84,11 @@ int main(int argc , char** argv)
+             return -1;
+         }
+ 
+-        auto cxo2 = Cx::O2(Cx::Constants::Messages::Application::WINDOW_TITLE, sf::VideoMode({800, 600}), sf::View({400, 300}, {800, 600}), true, settings);
++        // O2JAM_BORDERLESS=1 -> start in WINDOWED state: Application::CreateMainWindow then
++        // builds a decoration-free window that can still be MOVED and RESIZED (O2JAM_WINDOW=WxH,
++        // O2JAM_POS=x,y). Without it everything behaves exactly as before (desktop fullscreen).
++        const bool borderlessRequested = std::getenv("O2JAM_BORDERLESS") != nullptr;
++        auto cxo2 = Cx::O2(Cx::Constants::Messages::Application::WINDOW_TITLE, sf::VideoMode({800, 600}), sf::View({400, 300}, {800, 600}), !borderlessRequested, settings);
+         cxo2.GetModule<Gx::Context>().Provide<Cx::CommandLineContext>([ctx] (const auto&)
+         {
+             return std::make_unique<Cx::CommandLineContext>(ctx);

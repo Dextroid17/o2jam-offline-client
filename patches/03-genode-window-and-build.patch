@@ -1,0 +1,82 @@
+diff --git a/include/Genode/IO/ResourceContainer.hpp b/include/Genode/IO/ResourceContainer.hpp
+index c97c52b..3b974ac 100644
+--- a/include/Genode/IO/ResourceContainer.hpp
++++ b/include/Genode/IO/ResourceContainer.hpp
+@@ -7,6 +7,7 @@
+ #include <functional>
+ #include <unordered_map>
+ #include <string>
++#include <algorithm>
+ 
+ namespace Gx
+ {
+diff --git a/src/Genode/SceneGraph/TaskContainer.cpp b/src/Genode/SceneGraph/TaskContainer.cpp
+index cf1f9a9..6f7dd92 100644
+--- a/src/Genode/SceneGraph/TaskContainer.cpp
++++ b/src/Genode/SceneGraph/TaskContainer.cpp
+@@ -1,5 +1,6 @@
+ #include <Genode/SceneGraph/TaskContainer.hpp>
+ #include <Genode/Tasks/Task.hpp>
++#include <algorithm>
+ 
+ namespace Gx
+ {
+diff --git a/src/Genode/System/Application.cpp b/src/Genode/System/Application.cpp
+index 155f05e..12be45a 100644
+--- a/src/Genode/System/Application.cpp
++++ b/src/Genode/System/Application.cpp
+@@ -318,12 +318,37 @@ namespace Gx
+         // Resolve video mode override made by custom application, if any.
+         auto mode = GetVideoMode();
+ 
++        // Borderless-windowed mode (O2JAM_BORDERLESS=1): a normal, WM-managed
++        // window with no decorations that the user can still MOVE and RESIZE by
++        // dragging an edge/corner. Style::None on its own is NON-resizable: SFML
++        // then pins WM_NORMAL_HINTS min==max and the WM refuses to stretch it, so
++        // the Resize flag has to be OR'd back in (that also sets MWM_FUNC_RESIZE
++        // and drops the min/max clamp). O2JAM_WINDOW=WxH = client area of the
++        // window, O2JAM_POS=x,y = initial position, both in X11 pixels.
++        const bool borderless = std::getenv("O2JAM_BORDERLESS") != nullptr
++                                && m_state != sf::State::Fullscreen;
++        if (borderless)
++        {
++            if (const char* wh = std::getenv("O2JAM_WINDOW"))
++            {
++                unsigned int w = 0, h = 0;
++                if (std::sscanf(wh, "%ux%u", &w, &h) == 2 && w >= 320 && h >= 240)
++                    mode.size = {w, h};
++            }
++        }
++
++        auto style = m_state == sf::State::Fullscreen
++                     ? sf::Style::None
++                     : sf::Style::Titlebar | sf::Style::Close;
++        if (borderless)
++            style = sf::Style::None | sf::Style::Resize;
++
+         // Create/Re-create the window and apply window state.
+         // No option to turn into exclusive fullscreen for now.
+         m_window = std::make_unique<sf::RenderWindow>(
+             mode,
+             m_title,
+-            m_state == sf::State::Fullscreen ? sf::Style::None : sf::Style::Titlebar | sf::Style::Close,
++            style,
+             sf::State::Windowed,
+             m_settings
+         );
+@@ -331,6 +356,15 @@ namespace Gx
+         // This fix windowed to fullscreen issue in X11
+         if (m_state == sf::State::Fullscreen)
+             m_window->setPosition(sf::Vector2i(0, 0));
++        else if (borderless)
++        {
++            if (const char* pos = std::getenv("O2JAM_POS"))
++            {
++                int x = 0, y = 0;
++                if (std::sscanf(pos, "%d,%d", &x, &y) == 2)
++                    m_window->setPosition(sf::Vector2i(x, y));
++            }
++        }
+ 
+         m_window->setVerticalSyncEnabled(true);
+         m_window->setView(m_view);

@@ -93,8 +93,14 @@ jobs:
       - name: the built .exe must pass its own self-test
         shell: pwsh
         run: |
-          & ./dist/O2Jam-Installer.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "self-test failed with $LASTEXITCODE" }
+          # The installer is a GUI-subsystem exe, and PowerShell's call operator does
+          # NOT wait for those: $LASTEXITCODE stays $null, $null -ne 0 is true, and a
+          # perfectly good build gets reported as failed. Start-Process -Wait gives a
+          # real wait and a real exit code.
+          $p = Start-Process -FilePath ./dist/O2Jam-Installer.exe `
+                             -ArgumentList '--self-test' -NoNewWindow -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
+          "self-test exit code 0 -- OK"
 
       - uses: actions/upload-artifact@v4
         with:

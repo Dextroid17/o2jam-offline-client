@@ -18,7 +18,14 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CXO2="${O2JAM_CXO2:-$HOME/o2jam/native/CXO2}"
-PATCHES="${O2JAM_PATCHES:-$HERE/../patches}"
+# find the patch set: --patches / $O2JAM_PATCHES win, otherwise probe the layouts
+# this repo ships with and the one the installer creates
+PATCHES="${O2JAM_PATCHES:-}"
+if [ -z "$PATCHES" ]; then
+    for cand in "$HERE/../patches" "$HERE/patches" "$HERE"/../src/*/patches "$HOME/o2jam-offline-client/patches" "$CXO2/../patches"; do
+        [ -f "$cand/01-cxo2-window-and-toolchain.patch" ] && { PATCHES="$(cd "$cand" && pwd)"; break; }
+    done
+fi
 MODE=source ; CHECK=0 ; QUIET=0
 
 while [ $# -gt 0 ]; do
@@ -32,6 +39,12 @@ while [ $# -gt 0 ]; do
         *) echo "apply-patches.sh: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
+
+[ -n "$PATCHES" ] || {
+    echo "apply-patches.sh: no patch set found -- pass --patches DIR or set O2JAM_PATCHES" >&2
+    exit 2
+}
+[ -d "$PATCHES" ] || { echo "apply-patches.sh: patch directory not found -- $PATCHES" >&2; exit 2; }
 
 say()  { [ "$QUIET" = 1 ] || echo "$*"; }
 warn() { echo "$*" >&2; }

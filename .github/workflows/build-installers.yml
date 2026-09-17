@@ -60,7 +60,7 @@ jobs:
             './dist/O2Jam-Installer & sleep 8; import -window root /tmp/gui.png; kill %1'
           test -s /tmp/gui.png && echo "window rendered"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: linux-installers
           if-no-files-found: error
@@ -102,7 +102,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
           "self-test exit code 0 -- OK"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: windows-installers
           if-no-files-found: error

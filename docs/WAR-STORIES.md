@@ -29,11 +29,13 @@ auto style = m_state == sf::State::Fullscreen
              ? sf::Style::None
              : sf::Style::Titlebar | sf::Style::Close;
 if (borderless)
-    style = sf::Style::None | sf::Style::Resize;   // <- the whole trick
+    style = sf::Style::None | sf::Style::Resize | sf::Style::Close;
 ```
 
 That flag also makes SFML set `MWM_FUNC_RESIZE` in the Motif hints and skip the
 min/max clamp, so the window manager starts offering resize handles again.
+(`Close` is not there for decoration theatre — see #3: without it SFML actively
+*clears* `MWM_FUNC_CLOSE` and the titlebar gets no ✕.)
 
 **Lesson:** when an X11 window "can't be resized", read `WM_NORMAL_HINTS` before
 blaming the window manager. `xprop` would have saved a day.
@@ -66,17 +68,45 @@ said exactly why:
 _MOTIF_WM_HINTS = [3, 0x1e, 126, 0, 0]
 ```
 
-`0x1e` is a bitmask of allowed functions and it does not include
-`MWM_FUNC_CLOSE` (`0x1`). `0x1e | 0x1 = 0x1f`. One bit.
+`0x1e` is a bitmask of allowed functions — resize|move|minimise|maximise, no close
+bit. KWin believes the client and, quite correctly, refuses to draw a button the
+client says it does not have.
 
-The annoying part: KWin **caches** `_NET_WM_ALLOWED_ACTIONS` for a mapped window,
-so changing the hints on a live window changes nothing on screen. The helper
-(`scripts/fix-close-button.py`) therefore sets the bits, pushes the window
-through `WM_CHANGE_STATE` once to make KWin re-read its properties, and calls
-`kwin reconfigure` for good measure. Then `∨ ∧ ✕` appears.
+**Why the bit was missing.** SFML derives that mask from the style flags, and it is
+deliberate — `WindowImplX11.cpp`: *"We have to assume the reason `Style::Close` was
+not specified is to prevent the close button from appearing in the window
+titlebar"*. Our borderless style never asked for `Close`, so SFML cleared the bit
+for us. And the effective style was **not** the `None | Resize` that was written:
+`WindowImpl.cpp` re-adds `Titlebar` whenever `Resize` is set — which is why the
+hint read `0x1e` (titlebar functions) and not `0x12`.
 
-**Lesson:** X11 window managers cache. When a property change "doesn't work",
-look for the cache, not for a wrong property.
+**The real fix — ask for it (one flag):**
+
+```cpp
+if (borderless)
+    style = sf::Style::None | sf::Style::Resize | sf::Style::Close;
+```
+
+SFML then sets `MWM_FUNC_CLOSE` itself: the hint is `0x3e` on the **first** map and
+KWin draws `∨ ∧ ✕` from the first paint. Nothing has to be patched after launch.
+
+`scripts/fix-close-button.py` stays in the launcher as a **no-op fallback** for an
+unpatched binary. It now understands both encodings — CLOSE `0x20` (SFML's/KWin's
+layout) and ALL `0x01` (Motif's layout, which KWin reads as "every function",
+which is why OR-ing `0x1` appeared to work) — and when close is already allowed it
+changes nothing and does not bounce the window.
+
+The bounce is worth spelling out, because it looked like a bug of its own: KWin
+**caches** `_NET_WM_ALLOWED_ACTIONS` for a mapped window, so a property change on a
+live window changes nothing on screen. The helper had to push the window through
+`WM_CHANGE_STATE` (minimise → restore) to force a re-read, then call
+`kwin reconfigure` to repaint the decoration. Visually that is the game blinking
+once ~22 s into the loading screen — which is exactly what "the ✕ only shows up
+after it reboots" was.
+
+**Lesson:** a wrong-looking X11 hint is often a library writing precisely what you
+asked for. Read the toolkit's own source (and remember it may normalise your flags)
+before patching the property at runtime.
 
 ---
 

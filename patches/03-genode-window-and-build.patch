@@ -52,7 +52,7 @@ index 155f05e..12be45a 100644
 +                     ? sf::Style::None
 +                     : sf::Style::Titlebar | sf::Style::Close;
 +        if (borderless)
-+            style = sf::Style::None | sf::Style::Resize;
++            style = sf::Style::None | sf::Style::Resize | sf::Style::Close;  // Close: else SFML clears MWM_FUNC_CLOSE -> KWin draws no X
 +
          // Create/Re-create the window and apply window state.
          // No option to turn into exclusive fullscreen for now.

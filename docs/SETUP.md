@@ -169,7 +169,7 @@ height, so it is a little less than the full 4096×2304).
 | SFML configure fails on a Freetype/HarfBuzz target alias | fork vs upstream SFML `FetchContent` | `patches/02-…`, applied after the first configure + a re-configure |
 | Window can't be resized by dragging a corner | SFML sets `PMinSize == PMaxSize` for a decoration-free window | the Resize flag is OR'd back in (`patches/01-…`) — resize then works, MWM hints included |
 | Two black bars on the sides | the game letterboxes its 800×600 design view | patched to fill the window; `O2JAM_FIT=letterbox` brings them back deliberately |
-| No ✕ in the titlebar / can't close | `_MOTIF_WM_HINTS` missing `MWM_FUNC_CLOSE` | `native/fix-close-button.py`; KWin caches allowed actions, so the helper bounces the window and reconfigures KWin |
+| No ✕ in the titlebar / can't close | `_MOTIF_WM_HINTS` missing `MWM_FUNC_CLOSE` — i.e. a client built without `sf::Style::Close` in its borderless style | rebuild the client (the flag is in `patches/03-…`), or run `native/fix-close-button.py`; KWin caches allowed actions, so the helper has to bounce the window and reconfigure KWin |
 | Window opens on the wrong monitor | EWMH placement races the WM | `native/place-window.py` (frame-aware, uses `_NET_FRAME_EXTENTS`), `O2JAM_POS=x,y` |
 | `XAUTHORITY` errors after re-login | the xauth file name rotates per session | the launchers pick the newest `/run/user/$UID/xauth_*` themselves |
 | Game starts and exits immediately | data not linked / wrong folder | `link-assets.sh --list`, check `Image/` + `Music/` both resolve |

@@ -1,36 +1,9 @@
-# ---- game assets: never publish these (not ours to distribute) ----
-*.opa
-*.opi
-*.ojn
-*.ojm
-*.o2?
-*.dat
-Image/
-Music/
-assets/
-Avatar/
-Interface*/
+# Godot 4
+.godot/
+/android/
+builds/
+export_credentials.cfg
 
-# ---- build output ----
-build/
-bin/
-*.o
-*.a
-*.so
-CMakeCache.txt
-CMakeFiles/
-
-# ---- logs & scratch ----
-*.log
-*.tmp
-*.bak
-*~
-
-# ---- python ----
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# ---- packaged installers: they ship as GitHub release assets, not in git ----
-dist/
+# OS
+.DS_Store
+Thumbs.db

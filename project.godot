@@ -1,0 +1,49 @@
+; Engine configuration file.
+; O2Jam Offline Client — Godot 4 rewrite
+; Tuned for rhythm-game-grade input and audio latency. See README.md.
+
+config_version=5
+
+[application]
+
+config/name="O2Jam Offline Client"
+config/description="Offline 7-key rhythm game client. Native desktop, low-latency audio, built-in calibration."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Settings="*res://scripts/autoload/settings.gd"
+AudioClock="*res://scripts/autoload/audio_clock.gd"
+
+[audio]
+
+; THE part that matters.
+; 48000 Hz matches the native rate of virtually every modern sound device.
+; A mismatched mix rate forces resampling, and resampling jitter feels
+; exactly like timing drift in a mania game.
+driver/mix_rate=48000
+; 5 ms output latency. Desktop audio paths (WASAPI shared, PipeWire) can
+; handle what a browser never could. If a weak device crackles, raise to 10.
+driver/output_latency=5
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/resizable=true
+; VSync OFF by default: input polling must not be frame-quantized by the
+; display refresh. We cap at 240 FPS in code instead (see Settings).
+window/vsync/vsync_mode=0
+
+[input_devices]
+
+; Raw, un-smoothed pointer input.
+pointing/emulate_touch_from_mouse=false
+
+[rendering]
+
+; Multi-threaded rendering is the desktop default; stated explicitly so a
+; future engine upgrade can't silently change it.
+driver/threads/thread_model=1

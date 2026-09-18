@@ -1,0 +1,57 @@
+name: Build exports
+
+# Builds the Windows and Linux exports on every push to main, using the
+# export presets in export_presets.cfg. Download the zips from the
+# Actions tab -> latest run -> Artifacts.
+
+on:
+  push:
+    branches: [main, godot-rewrite]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot editor and export templates
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          chmod +x godot
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d "$HOME/.local/share/godot/export_templates"
+          mv "$HOME/.local/share/godot/export_templates/templates/"* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Import project (generates .godot cache, validates scripts)
+        run: ./godot --headless --path . --import
+
+      - name: Export Linux Desktop
+        run: |
+          mkdir -p builds/linux
+          ./godot --headless --path . --export-release "Linux Desktop" builds/linux/o2jam.x86_64
+          cp packaging/linux/o2jam-launch.sh builds/linux/
+          chmod +x builds/linux/o2jam.x86_64 builds/linux/o2jam-launch.sh
+
+      - name: Export Windows Desktop
+        run: |
+          mkdir -p builds/windows
+          ./godot --headless --path . --export-release "Windows Desktop" builds/windows/o2jam.exe
+
+      - name: Package artifacts
+        run: |
+          cd builds
+          zip -qr o2jam-linux-x86_64.zip linux
+          zip -qr o2jam-windows-x86_64.zip windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: o2jam-builds
+          path: builds/*.zip
+          retention-days: 30

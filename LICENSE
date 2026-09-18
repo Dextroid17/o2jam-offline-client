@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Dextroid17
+Copyright (c) 2026 O2Jam Offline Client contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,14 +20,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----------------------------------------------------------------------------
-This license covers the original work in this repository: the launcher and
-window tooling under scripts/, the installer and docs, and the patch files
-under patches/ insofar as they are our own additions.
-
-It does NOT cover:
-  * CXO2, Genode, SFML or any other upstream project (see THIRD-PARTY.md),
-  * O2Jam game data or assets, which are not distributed here at all.
-
-No game assets, no upstream source and no third-party binaries are included
-in this repository.
+NOTE: O2Jam and all associated game assets are the property of their
+respective owners. This project distributes no game content.

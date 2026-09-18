@@ -125,11 +125,38 @@ fi
 nohup env -u WAYLAND_DISPLAY O2JAM_BORDERLESS=1 O2JAM_WINDOW="$WANT" O2JAM_POS="$O2JAM_POS" \
   O2JAM_SHOP_URL="${O2JAM_SHOP_URL:-http://127.0.0.1:8099}" \
   SDL_VIDEODRIVER=x11 ./bin/linux/Release/OTwo > "$LOG" 2>&1 &
-sleep 22
+# Wait for the window to exist - and for KWin to publish its frame extents - instead of sleeping
+# blindly.  Measured on a cold start: the window maps at ~2s and then never moves again (same id,
+# same _MOTIF_WM_HINTS, no state changes for the following 30s), so the old 22s sleep only
+# postponed the snap and the close-button step.  Bounded, so a broken launch still proceeds.
+echo "=== waiting for the game window ==="
+"$PY" - <<'PYEOF' | sed 's/^/  /' || true
+import sys, time
+from Xlib import display, X
 
-# The close button must be fixed BEFORE the geometry snap below: the fix bounces the window
-# through minimise/restore, and that bounce can make KWin re-place the window, so the snap has
-# to come last.
+d = display.Display()
+root = d.screen().root
+deadline = time.time() + 30.0
+while time.time() < deadline:
+    win = None
+    for w in root.query_tree().children:
+        try:
+            cls = w.get_full_property(d.intern_atom('WM_CLASS'), X.AnyPropertyType)
+        except Exception:
+            continue
+        if cls and 'O2' in bytes(cls.value).decode('latin1', 'replace').upper():
+            win = w
+            break
+    if win is not None and win.get_full_property(d.intern_atom('_NET_FRAME_EXTENTS'), X.AnyPropertyType):
+        print('window 0x%x mapped, frame extents published (%.1fs)' % (win.id, 30.0 - (deadline - time.time())))
+        sys.exit(0)
+    time.sleep(0.25)
+print('no window + frame extents after 30s - continuing anyway; check the log')
+PYEOF
+
+# The close button step stays BEFORE the geometry snap: for an unpatched binary the fix bounces
+# the window through minimise/restore, and that bounce can make KWin re-place the window, so the
+# snap has to come last.  With the current client the step is a read-only no-op.
 echo "=== enabling the titlebar close (X) button ==="
 "$PY" "$HERE/fix-close-button.py" | sed 's/^/  /'
 

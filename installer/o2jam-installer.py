@@ -52,6 +52,15 @@ WIN = platform.system() == "Windows"
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 VERSION = "1.2"
+
+# Dark theme palette -- charcoal panels, the project's blue accent
+BG      = "#0b0e1a"   # window background
+PANEL   = "#181f3d"   # raised surfaces (buttons)
+LINE    = "#2a3464"   # borders / separators
+TXT     = "#e8ecff"   # primary text
+DIM     = "#8b94c4"   # secondary text
+ACCENT  = "#35c2f0"   # matches the blue in packaging/make-icon.py
+ON_ACCENT = "#06202a" # text that sits on ACCENT
 FROZEN = bool(getattr(sys, "frozen", False))
 DRIVERS = ("install.ps1", "install.sh") if WIN else ("install.sh", "install.ps1")
 
@@ -404,15 +413,68 @@ class Installer(tk.Tk if tk else object):
         self.log("")
 
     # ------------------------------------------------------------------ UI --
+    # --------------------------------------------------------------- theme --
+    # Dark, modern theme: charcoal panels, blue accent, one loud primary
+    # button.  Uses the "clam" engine so the colours hold on every platform.
+    def _apply_theme(self) -> None:
+        self.configure(background=BG)
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(".", background=BG, foreground=TXT, bordercolor=LINE,
+                        darkcolor=BG, lightcolor=BG, troughcolor="#0e1330",
+                        focuscolor=ACCENT)
+        style.configure("TFrame", background=BG)
+        style.configure("Accent.TFrame", background=ACCENT)
+        style.configure("TLabel", background=BG, foreground=TXT)
+        style.configure("Title.TLabel", background=BG, foreground=ACCENT,
+                        font=("TkDefaultFont", 17, "bold"))
+        style.configure("TitleDim.TLabel", background=BG, foreground=TXT,
+                        font=("TkDefaultFont", 17, "bold"))
+        style.configure("Dim.TLabel", background=BG, foreground=DIM)
+        style.configure("TLabelframe", background=BG, bordercolor=LINE)
+        style.configure("TLabelframe.Label", background=BG, foreground=ACCENT)
+        style.configure("TButton", background=PANEL, foreground=TXT,
+                        bordercolor=LINE, focusthickness=1, padding=(12, 6))
+        style.map("TButton",
+                  background=[("pressed", LINE), ("active", LINE)],
+                  foreground=[("disabled", DIM)])
+        style.configure("Accent.TButton", background=ACCENT, foreground=ON_ACCENT,
+                        bordercolor=ACCENT, font=("TkDefaultFont", 10, "bold"),
+                        padding=(16, 6))
+        style.map("Accent.TButton",
+                  background=[("pressed", "#2a9bc7"), ("active", "#5ad4f5")],
+                  foreground=[("disabled", DIM)])
+        style.configure("TEntry", fieldbackground="#0e1330", foreground=TXT,
+                        insertcolor=TXT, bordercolor=LINE)
+        style.map("TEntry", bordercolor=[("focus", ACCENT)])
+        style.configure("TSpinbox", fieldbackground="#0e1330", foreground=TXT,
+                        insertcolor=TXT, bordercolor=LINE, arrowcolor=TXT)
+        style.configure("TCheckbutton", background=BG, foreground=TXT)
+        style.map("TCheckbutton", foreground=[("active", ACCENT)])
+        style.configure("Horizontal.TProgressbar", background=ACCENT,
+                        troughcolor="#0e1330", bordercolor=BG,
+                        lightcolor=ACCENT, darkcolor=ACCENT)
+        style.configure("TScrollbar", background=PANEL, troughcolor=BG,
+                        bordercolor=BG, arrowcolor=TXT,
+                        darkcolor=PANEL, lightcolor=PANEL)
+
+    # ------------------------------------------------------------------ UI --
     def _build_ui(self) -> None:
-        outer = ttk.Frame(self, padding=12)
+        self._apply_theme()
+        outer = ttk.Frame(self, padding=(16, 14))
         outer.pack(fill="both", expand=True)
 
-        ttk.Label(outer, text="O2Jam Offline Client",
-                  font=("TkDefaultFont", 15, "bold")).pack(anchor="w")
+        head = ttk.Frame(outer)
+        head.pack(fill="x")
+        ttk.Label(head, text="O2Jam", style="Title.TLabel").pack(side="left")
+        ttk.Label(head, text=" Offline Client", style="TitleDim.TLabel").pack(side="left")
+        ttk.Frame(outer, height=2, style="Accent.TFrame").pack(fill="x", pady=(6, 12))
         ttk.Label(outer, text="The Korean rhythm classic, running natively. No Wine, no emulator, "
                               "no VM, no admin rights.",
-                  foreground="#666666").pack(anchor="w", pady=(0, 10))
+                  style="Dim.TLabel").pack(anchor="w", pady=(0, 10))
 
         grid = ttk.Frame(outer)
         grid.pack(fill="x")
@@ -429,7 +491,7 @@ class Installer(tk.Tk if tk else object):
         ttk.Button(grid, text="Browse", command=self._pick_assets).grid(row=1, column=2)
         ttk.Label(grid, text="the folder that contains Image/ and Music/ -- nothing is copied, "
                              "it is only linked",
-                  foreground="#666666").grid(row=2, column=1, sticky="w", padx=6)
+                  style="Dim.TLabel").grid(row=2, column=1, sticky="w", padx=6)
 
         # options
         opts = ttk.LabelFrame(outer, text="Options", padding=8)
@@ -446,7 +508,8 @@ class Installer(tk.Tk if tk else object):
         # buttons
         btns = ttk.Frame(outer)
         btns.pack(fill="x")
-        self.install_btn = ttk.Button(btns, text="Install", command=self.start_install)
+        self.install_btn = ttk.Button(btns, text="Install", style="Accent.TButton",
+                                command=self.start_install)
         self.install_btn.pack(side="left")
         self.verify_btn = ttk.Button(btns, text="Dry run", command=self.start_verify)
         self.verify_btn.pack(side="left", padx=6)
@@ -461,8 +524,10 @@ class Installer(tk.Tk if tk else object):
         logf = ttk.LabelFrame(outer, text="Log", padding=4)
         logf.pack(fill="both", expand=True)
         self.log_widget = tk.Text(logf, height=14, wrap="word", borderwidth=0,
-                                  background="#1e1f22", foreground="#dcdcdc",
-                                  insertbackground="#dcdcdc", font=("TkFixedFont", 9))
+                                  background="#0e1330", foreground="#c9d2f2",
+                                  insertbackground="#c9d2f2", relief="flat",
+                                  selectbackground=ACCENT, selectforeground=ON_ACCENT,
+                                  font=("TkFixedFont", 9))
         scroll = ttk.Scrollbar(logf, command=self.log_widget.yview)
         self.log_widget.configure(yscrollcommand=scroll.set)
         self.log_widget.pack(side="left", fill="both", expand=True)

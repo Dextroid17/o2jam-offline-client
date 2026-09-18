@@ -115,7 +115,15 @@ echo "  O2JAM_WINDOW=$WANT  O2JAM_POS=$O2JAM_POS (titlebar corner)"
 echo "  note: O2JAM_BORDERLESS=1 below only means 'resizable client' in the patched client code -"
 echo "        the titlebar is forced by the KWin rule from setup-frame-rule.sh, not by SFML."
 cd "$CX" || exit 1
+# Make sure the local Music Shop server is up: the in-game MUSIC SHOP downloads songs from it.
+SHOP_DIR="$HOME/o2jam/shop"
+if [ -x "$SHOP_DIR/shop-up.sh" ]; then
+  "$SHOP_DIR/shop-up.sh" start >/dev/null 2>&1 \
+    && echo "  music shop    : $( "$SHOP_DIR/shop-up.sh" status )" \
+    || echo "  music shop    : NOT available (in-game downloads will fail)"
+fi
 nohup env -u WAYLAND_DISPLAY O2JAM_BORDERLESS=1 O2JAM_WINDOW="$WANT" O2JAM_POS="$O2JAM_POS" \
+  O2JAM_SHOP_URL="${O2JAM_SHOP_URL:-http://127.0.0.1:8099}" \
   SDL_VIDEODRIVER=x11 ./bin/linux/Release/OTwo > "$LOG" 2>&1 &
 sleep 22
 
